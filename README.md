@@ -60,18 +60,18 @@ The API writes the order and a queue intent in one PostgreSQL transaction, then 
 
 ## The twelve factors
 
-1. Codebase: one repository and one tracked codebase.
-2. Dependencies: Go modules and committed `go.sum` declare the full graph.
-3. Config: caarlos0/env reads deploy-varying values from the environment.
-4. Backing services: PostgreSQL and Redis are attached by URLs.
-5. Build, release, run: one compiled binary is built once and configured at run time.
-6. Processes: web and worker keep durable state in backing services.
-7. Port binding: web exports HTTP on `PORT`.
-8. Concurrency: separate web and worker processes scale independently; worker concurrency is bounded.
-9. Disposability: readiness drops before bounded HTTP or job drain.
-10. Dev/prod parity: local, CI, and production-shaped tests use PostgreSQL and Redis through the same clients.
-11. Logs: JSON events go to stdout with service, process, release, and trace context.
-12. Admin processes: migrations run from the same binary and configuration as the app.
+1. Factor I: Codebase, one repository and one tracked codebase.
+2. Factor II: Dependencies, Go modules and committed `go.sum` declare the full graph.
+3. Factor III: Config, caarlos0/env reads deploy-varying values from the environment.
+4. Factor IV: Backing services, PostgreSQL and Redis are attached by URLs.
+5. Factor V: Build, release, run, one compiled binary is built once and configured at run time.
+6. Factor VI: Processes, web and worker keep durable state in backing services.
+7. Factor VII: Port binding, web exports HTTP on `PORT`.
+8. Factor VIII: Concurrency, separate web and worker processes scale independently; worker concurrency is bounded.
+9. Factor IX: Disposability, readiness drops before bounded HTTP or job drain.
+10. Factor X: Dev/prod parity, local, CI, and production-shaped tests use PostgreSQL and Redis through the same clients.
+11. Factor XI: Logs, JSON events go to stdout with service, process, release, and trace context.
+12. Factor XII: Admin processes, migrations run from the same binary and configuration as the app.
 
 ## Agent harnesses
 
