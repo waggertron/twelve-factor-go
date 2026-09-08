@@ -24,6 +24,26 @@ func workerCommand(logger *slog.Logger) *cobra.Command {
 	}}
 }
 
+type workerServer interface {
+	Stop()
+	Shutdown()
+}
+
+func shutdownWorker(server workerServer, grace time.Duration) error {
+	server.Stop()
+	done := make(chan struct{})
+	go func() {
+		server.Shutdown()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-time.After(grace):
+		return fmt.Errorf("worker shutdown deadline exceeded")
+	}
+}
+
 func runWorker(logger *slog.Logger) error {
 	cfg, err := config.Load("worker")
 	if err != nil {
@@ -59,17 +79,9 @@ func runWorker(logger *slog.Logger) error {
 	telemetry.Event(ctx, logger, "worker", cfg.ReleaseID, "worker.ready", "concurrency", cfg.WorkerConcurrency)
 	<-ctx.Done()
 	telemetry.Event(context.Background(), logger, "worker", cfg.ReleaseID, "worker.draining")
-	server.Stop()
-	done := make(chan struct{})
-	go func() {
-		server.Shutdown()
-		close(done)
-	}()
-	select {
-	case <-done:
-		telemetry.Event(context.Background(), logger, "worker", cfg.ReleaseID, "worker.stopped")
-		return nil
-	case <-time.After(time.Duration(cfg.ShutdownGraceMS) * time.Millisecond):
-		return fmt.Errorf("worker shutdown deadline exceeded")
+	if err := shutdownWorker(server, time.Duration(cfg.ShutdownGraceMS)*time.Millisecond); err != nil {
+		return err
 	}
+	telemetry.Event(context.Background(), logger, "worker", cfg.ReleaseID, "worker.stopped")
+	return nil
 }

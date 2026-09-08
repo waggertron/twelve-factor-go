@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-required='go.mod go.sum Dockerfile compose.yaml docs/application-contract.md internal/config/config.go internal/commands/web.go internal/commands/worker.go internal/commands/admin.go internal/telemetry/log.go tests/integration/services_test.go .agents/skills/twelve-factor-app/SKILL.md .claude/skills/twelve-factor-app/SKILL.md'
+required='go.mod go.sum Dockerfile compose.yaml docs/application-contract.md internal/config/config.go internal/commands/web.go internal/commands/worker.go internal/commands/worker_test.go internal/commands/admin.go internal/telemetry/log.go tests/integration/services_test.go .agents/skills/twelve-factor-app/SKILL.md .claude/skills/twelve-factor-app/SKILL.md'
 for path in $required; do
   if [ ! -f "$path" ]; then
     echo "missing required file: $path" >&2
