@@ -23,6 +23,11 @@ func adminCommand(logger *slog.Logger) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		shutdownTracing, err := telemetry.Configure(cfg.TelemetryMode)
+		if err != nil {
+			return err
+		}
+		defer shutdownTracing(context.Background())
 		ctx := context.Background()
 		pool, err := store.NewPool(ctx, cfg.DatabaseURL)
 		if err != nil {

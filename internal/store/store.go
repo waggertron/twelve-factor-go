@@ -15,6 +15,7 @@ type Orders interface {
 	Get(context.Context, string) (domain.Order, error)
 	Claim(context.Context, string) (bool, error)
 	Complete(context.Context, string) (bool, error)
+	PendingJobs(context.Context) ([]domain.Job, error)
 	MarkEnqueued(context.Context, string) error
 }
 
@@ -41,12 +42,12 @@ func (p Postgres) Create(ctx context.Context, key string, input domain.OrderInpu
 	now := time.Now().UTC()
 	var order domain.Order
 	err = tx.QueryRow(ctx, `
-		INSERT INTO orders(id,idempotency_key,customer_id,amount_cents,status,created_at,updated_at)
-		VALUES(gen_random_uuid(),$1,$2,$3,'accepted',$4,$4)
+		INSERT INTO orders(id,idempotency_key,customer_id,amount_cents,status,created_at)
+		VALUES(gen_random_uuid(),$1,$2,$3,'accepted',$4)
 		ON CONFLICT(idempotency_key) DO NOTHING
-		RETURNING id::text,idempotency_key,customer_id,amount_cents,status,created_at,updated_at`,
+		RETURNING id::text,idempotency_key,customer_id,amount_cents,status,created_at,completed_at`,
 		key, input.CustomerID, input.AmountCents, now,
-	).Scan(&order.ID, &order.IdempotencyKey, &order.CustomerID, &order.AmountCents, &order.Status, &order.CreatedAt, &order.UpdatedAt)
+	).Scan(&order.ID, &order.IdempotencyKey, &order.CustomerID, &order.AmountCents, &order.Status, &order.CreatedAt, &order.CompletedAt)
 	created := err == nil
 	if errors.Is(err, pgx.ErrNoRows) {
 		order, err = getWith(ctx, tx, key, true)
@@ -58,7 +59,7 @@ func (p Postgres) Create(ctx context.Context, key string, input domain.OrderInpu
 		return domain.Order{}, false, err
 	}
 	if created {
-		if _, err = tx.Exec(ctx, `INSERT INTO queue_intents(order_id) VALUES($1)`, order.ID); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO order_jobs(order_id,schema_version) VALUES($1,1)`, order.ID); err != nil {
 			return domain.Order{}, false, err
 		}
 	}
@@ -78,8 +79,8 @@ func getWith(ctx context.Context, q rowQuerier, value string, byKey bool) (domai
 		column = "idempotency_key"
 	}
 	var order domain.Order
-	err := q.QueryRow(ctx, `SELECT id::text,idempotency_key,customer_id,amount_cents,status,created_at,updated_at FROM orders WHERE `+column+`=$1`, value).
-		Scan(&order.ID, &order.IdempotencyKey, &order.CustomerID, &order.AmountCents, &order.Status, &order.CreatedAt, &order.UpdatedAt)
+	err := q.QueryRow(ctx, `SELECT id::text,idempotency_key,customer_id,amount_cents,status,created_at,completed_at FROM orders WHERE `+column+`=$1`, value).
+		Scan(&order.ID, &order.IdempotencyKey, &order.CustomerID, &order.AmountCents, &order.Status, &order.CreatedAt, &order.CompletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Order{}, domain.ErrNotFound
 	}
@@ -91,16 +92,38 @@ func (p Postgres) Get(ctx context.Context, id string) (domain.Order, error) {
 }
 
 func (p Postgres) Claim(ctx context.Context, id string) (bool, error) {
-	result, err := p.Pool.Exec(ctx, `UPDATE orders SET status='processing',updated_at=now() WHERE id=$1 AND status='accepted'`, id)
+	result, err := p.Pool.Exec(ctx, `UPDATE orders SET status='processing' WHERE id=$1 AND status='accepted'`, id)
 	return result.RowsAffected() == 1, err
 }
 
 func (p Postgres) Complete(ctx context.Context, id string) (bool, error) {
-	result, err := p.Pool.Exec(ctx, `UPDATE orders SET status='completed',updated_at=now() WHERE id=$1 AND status='processing'`, id)
+	result, err := p.Pool.Exec(ctx, `UPDATE orders SET status='completed',completed_at=now() WHERE id=$1 AND status='processing'`, id)
 	return result.RowsAffected() == 1, err
 }
 
+func (p Postgres) PendingJobs(ctx context.Context) ([]domain.Job, error) {
+	rows, err := p.Pool.Query(ctx, `
+		SELECT jobs.order_id::text, orders.idempotency_key
+		FROM order_jobs AS jobs
+		JOIN orders ON orders.id = jobs.order_id
+		WHERE jobs.published_at IS NULL AND jobs.schema_version = 1
+		ORDER BY jobs.order_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	jobs := []domain.Job{}
+	for rows.Next() {
+		job := domain.Job{SchemaVersion: 1, AttemptedAt: time.Now().UTC()}
+		if err := rows.Scan(&job.OrderID, &job.IdempotencyKey); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, rows.Err()
+}
+
 func (p Postgres) MarkEnqueued(ctx context.Context, id string) error {
-	_, err := p.Pool.Exec(ctx, `UPDATE queue_intents SET enqueued_at=now() WHERE order_id=$1 AND enqueued_at IS NULL`, id)
+	_, err := p.Pool.Exec(ctx, `UPDATE order_jobs SET published_at=now() WHERE order_id=$1 AND published_at IS NULL`, id)
 	return err
 }

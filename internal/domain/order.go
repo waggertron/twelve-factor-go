@@ -4,6 +4,8 @@ import (
 	"errors"
 	"regexp"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const ContractVersion = "1.0.1"
@@ -39,24 +41,44 @@ func ValidateIdempotencyKey(key string) error {
 }
 
 type Order struct {
-	ID             string    `json:"id"`
-	IdempotencyKey string    `json:"idempotencyKey"`
-	CustomerID     string    `json:"customerId"`
-	AmountCents    int       `json:"amountCents"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID             string     `json:"id"`
+	IdempotencyKey string     `json:"idempotencyKey"`
+	CustomerID     string     `json:"customerId"`
+	AmountCents    int        `json:"amountCents"`
+	Status         string     `json:"status"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	CompletedAt    *time.Time `json:"completedAt"`
 }
 
 type Job struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	OrderID       string `json:"orderId"`
-	Attempt       int    `json:"attempt"`
+	SchemaVersion  int       `json:"schemaVersion"`
+	OrderID        string    `json:"orderId"`
+	IdempotencyKey string    `json:"idempotencyKey"`
+	AttemptedAt    time.Time `json:"attemptedAt"`
 }
 
 func (j Job) Validate() error {
-	if j.SchemaVersion != 1 || j.OrderID == "" || j.Attempt < 1 || j.Attempt > 3 {
+	if j.SchemaVersion != 1 || uuid.Validate(j.OrderID) != nil || ValidateIdempotencyKey(j.IdempotencyKey) != nil || j.AttemptedAt.IsZero() {
 		return ErrInvalid
 	}
 	return nil
 }
+
+type Fixture struct {
+	ID             string
+	IdempotencyKey string
+	Input          OrderInput
+}
+
+var (
+	ValidSmallOrder = Fixture{
+		ID:             "00000000-0000-4000-8000-000000000001",
+		IdempotencyKey: "order-submit-001",
+		Input:          OrderInput{CustomerID: "customer-001", AmountCents: 59},
+	}
+	ValidBoundaryOrder = Fixture{
+		ID:             "00000000-0000-4000-8000-000000000002",
+		IdempotencyKey: "order-submit-002",
+		Input:          OrderInput{CustomerID: "c-2", AmountCents: 99},
+	}
+)

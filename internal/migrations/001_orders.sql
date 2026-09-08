@@ -5,12 +5,13 @@ CREATE TABLE IF NOT EXISTS orders (
   amount_cents integer NOT NULL CHECK (amount_cents BETWEEN 1 AND 99),
   status text NOT NULL CHECK (status IN ('accepted', 'processing', 'completed', 'failed')),
   created_at timestamptz NOT NULL,
-  updated_at timestamptz NOT NULL
+  completed_at timestamptz
 );
 
-CREATE TABLE IF NOT EXISTS queue_intents (
+CREATE TABLE IF NOT EXISTS order_jobs (
   order_id uuid PRIMARY KEY REFERENCES orders(id),
-  enqueued_at timestamptz
+  schema_version integer NOT NULL CHECK (schema_version = 1),
+  published_at timestamptz
 );
 
 CREATE TABLE IF NOT EXISTS schema_migrations (

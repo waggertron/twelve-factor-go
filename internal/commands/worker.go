@@ -49,6 +49,11 @@ func runWorker(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	shutdownTracing, err := telemetry.Configure(cfg.TelemetryMode)
+	if err != nil {
+		return err
+	}
+	defer shutdownTracing(context.Background())
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
@@ -63,7 +68,7 @@ func runWorker(logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("queue unavailable")
 	}
-	server := asynq.NewServer(redisOptions, asynq.Config{Concurrency: cfg.WorkerConcurrency, Queues: map[string]int{"orders": 1}})
+	server := asynq.NewServer(redisOptions, asynq.Config{Concurrency: cfg.WorkerConcurrency, Queues: map[string]int{orderqueue.QueueName: 1}})
 	mux := asynq.NewServeMux()
 	processor := orderqueue.Processor{
 		Orders: store.Postgres{Pool: pool},

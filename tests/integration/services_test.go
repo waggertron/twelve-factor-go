@@ -57,7 +57,7 @@ func TestPostgresAndRedisWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	job := domain.Job{SchemaVersion: 1, OrderID: order.ID, Attempt: 1}
+	job := domain.Job{SchemaVersion: 1, OrderID: order.ID, IdempotencyKey: "integration-99", AttemptedAt: time.Now().UTC()}
 	if err := client.Enqueue(ctx, job); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestPostgresAndRedisWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := asynq.NewServer(redisOptions, asynq.Config{Concurrency: 1, Queues: map[string]int{"orders": 1}})
+	server := asynq.NewServer(redisOptions, asynq.Config{Concurrency: 1, Queues: map[string]int{orderqueue.QueueName: 1}})
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(orderqueue.TaskType, orderqueue.Processor{Orders: orders}.Handle)
 	if err := server.Start(mux); err != nil {

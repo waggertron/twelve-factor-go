@@ -7,9 +7,13 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/waggertron/twelve-factor-go/internal/domain"
+	"go.opentelemetry.io/otel"
 )
 
-const TaskType = "orders.v1.complete"
+const (
+	QueueName = "orders.v1"
+	TaskType  = "complete-order"
+)
 
 type Enqueuer interface {
 	Enqueue(context.Context, domain.Job) error
@@ -45,7 +49,12 @@ func (c *Client) Enqueue(ctx context.Context, job domain.Job) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.client.EnqueueContext(ctx, asynq.NewTask(TaskType, payload), asynq.Queue("orders"), asynq.MaxRetry(2))
+	_, err = c.client.EnqueueContext(
+		ctx,
+		asynq.NewTask(TaskType, payload),
+		asynq.Queue(QueueName),
+		asynq.MaxRetry(2),
+	)
 	return err
 }
 
@@ -60,6 +69,8 @@ type Processor struct {
 }
 
 func (p Processor) Handle(ctx context.Context, task *asynq.Task) error {
+	ctx, span := otel.Tracer("twelve-factor-orders/worker").Start(ctx, "orders.complete")
+	defer span.End()
 	var job domain.Job
 	if err := json.Unmarshal(task.Payload(), &job); err != nil {
 		return fmt.Errorf("decode job: %w", asynq.SkipRetry)

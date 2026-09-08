@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -18,6 +19,7 @@ import (
 	"github.com/waggertron/twelve-factor-go/internal/readiness"
 	"github.com/waggertron/twelve-factor-go/internal/store"
 	"github.com/waggertron/twelve-factor-go/internal/telemetry"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func webCommand(logger *slog.Logger) *cobra.Command {
@@ -31,6 +33,11 @@ func runWeb(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	shutdownTracing, err := telemetry.Configure(cfg.TelemetryMode)
+	if err != nil {
+		return err
+	}
+	defer shutdownTracing(context.Background())
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
@@ -48,7 +55,11 @@ func runWeb(logger *slog.Logger) error {
 	defer queueClient.Close()
 	state := &readiness.State{}
 	api := httpapi.API{Orders: store.Postgres{Pool: pool}, Queue: queueClient, Readiness: state}
-	server := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: api.Router(), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{
+		Addr:              net.JoinHostPort(cfg.AppHost, fmt.Sprintf("%d", cfg.Port)),
+		Handler:           otelhttp.NewHandler(api.Router(), "orders.http"),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	errorsCh := make(chan error, 1)
 	go func() { errorsCh <- server.ListenAndServe() }()
 	state.MarkReady()
@@ -67,5 +78,6 @@ func runWeb(logger *slog.Logger) error {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("web shutdown deadline: %w", err)
 	}
+	telemetry.Event(context.Background(), logger, "web", cfg.ReleaseID, "web.stopped")
 	return nil
 }

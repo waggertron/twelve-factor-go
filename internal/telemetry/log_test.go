@@ -10,6 +10,21 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+func TestConfigureSupportedModes(t *testing.T) {
+	for _, mode := range []string{"console", "memory", "disabled"} {
+		shutdown, err := Configure(mode)
+		if err != nil {
+			t.Fatalf("mode %q: %v", mode, err)
+		}
+		if err := shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown mode %q: %v", mode, err)
+		}
+	}
+	if _, err := Configure("remote"); err == nil {
+		t.Fatal("unsupported telemetry mode should fail")
+	}
+}
+
 func TestStructuredEventHasCorrelation(t *testing.T) {
 	var output bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&output, nil))

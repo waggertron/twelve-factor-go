@@ -4,19 +4,23 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 
 	"github.com/caarlos0/env/v11"
 )
 
 type Config struct {
+	AppHost           string `env:"APP_HOST" envDefault:"0.0.0.0"`
 	DatabaseURL       string `env:"DATABASE_URL,required"`
 	RedisURL          string `env:"REDIS_URL"`
 	Port              int    `env:"PORT" envDefault:"3103"`
 	WorkerConcurrency int    `env:"WORKER_CONCURRENCY" envDefault:"4"`
 	ShutdownGraceMS   int    `env:"SHUTDOWN_GRACE_MS" envDefault:"10000"`
-	ReleaseID         string `env:"RELEASE_ID" envDefault:"dev"`
+	ReleaseID         string `env:"RELEASE_ID,required"`
 	TelemetryMode     string `env:"TELEMETRY_MODE" envDefault:"console"`
 }
+
+var releasePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 type Error struct{ Category string }
 
@@ -42,8 +46,14 @@ func Validate(cfg Config, processType string) error {
 			return Error{Category: "redis_url"}
 		}
 	}
-	if cfg.Port < 1 || cfg.Port > 65535 {
+	if cfg.AppHost == "" {
+		return Error{Category: "app_host"}
+	}
+	if cfg.Port < 1024 || cfg.Port > 65535 {
 		return Error{Category: "port"}
+	}
+	if !releasePattern.MatchString(cfg.ReleaseID) {
+		return Error{Category: "release_id"}
 	}
 	if cfg.WorkerConcurrency < 1 || cfg.WorkerConcurrency > 32 {
 		return Error{Category: "worker_concurrency"}
@@ -51,7 +61,7 @@ func Validate(cfg Config, processType string) error {
 	if cfg.ShutdownGraceMS < 1000 || cfg.ShutdownGraceMS > 60000 {
 		return Error{Category: "shutdown_grace_ms"}
 	}
-	if cfg.TelemetryMode != "console" {
+	if cfg.TelemetryMode != "console" && cfg.TelemetryMode != "memory" && cfg.TelemetryMode != "disabled" {
 		return Error{Category: "telemetry_mode"}
 	}
 	return nil

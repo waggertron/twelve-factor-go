@@ -49,10 +49,10 @@ The verification script uses repository-local Go caches, checks the migration co
 ## Process types
 
 - `orders web` serves HTTP and removes readiness before bounded shutdown.
-- `orders worker` processes `orders.v1.complete` jobs with bounded concurrency, stops intake, then drains active work.
+- `orders worker` processes `complete-order` jobs from queue `orders.v1` with bounded concurrency, stops intake, then drains active work.
 - `orders admin migrate --target 001` runs the packaged migration through the normal config and database modules.
 
-Required deployment configuration is `DATABASE_URL` for every process and `REDIS_URL` for web and worker. Optional values are `PORT`, `WORKER_CONCURRENCY`, `SHUTDOWN_GRACE_MS`, `RELEASE_ID`, and `TELEMETRY_MODE`. Invalid configuration produces categories without echoing values.
+Required deployment configuration is `DATABASE_URL` and `RELEASE_ID` for every process, plus `REDIS_URL` for web and worker. Optional values are `APP_HOST`, `PORT`, `WORKER_CONCURRENCY`, `SHUTDOWN_GRACE_MS`, and `TELEMETRY_MODE`. Invalid configuration produces categories without echoing values.
 
 ## Architecture and contract
 

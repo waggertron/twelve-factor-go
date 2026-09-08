@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/waggertron/twelve-factor-go/internal/domain"
 	"github.com/waggertron/twelve-factor-go/internal/queue"
 	"github.com/waggertron/twelve-factor-go/internal/readiness"
@@ -57,21 +58,35 @@ func (a API) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "internal_error", "request failed")
 		return
 	}
-	if created {
-		if err := a.Queue.Enqueue(r.Context(), domain.Job{SchemaVersion: 1, OrderID: order.ID, Attempt: 1}); err != nil {
-			writeError(w, 503, "queue_unavailable", "order was persisted for later dispatch")
+	jobs, err := a.Orders.PendingJobs(r.Context())
+	if err != nil {
+		writeError(w, 500, "internal_error", "request failed")
+		return
+	}
+	for _, job := range jobs {
+		if err := a.Queue.Enqueue(r.Context(), job); err != nil {
+			writeError(w, 503, "internal_error", "order was persisted for later dispatch")
 			return
 		}
-		if err := a.Orders.MarkEnqueued(r.Context(), order.ID); err != nil {
+		if err := a.Orders.MarkEnqueued(r.Context(), job.OrderID); err != nil {
 			writeError(w, 500, "internal_error", "request failed")
 			return
 		}
 	}
-	writeJSON(w, http.StatusAccepted, order)
+	status := http.StatusOK
+	if created {
+		status = http.StatusAccepted
+	}
+	writeJSON(w, status, order)
 }
 
 func (a API) get(w http.ResponseWriter, r *http.Request) {
-	order, err := a.Orders.Get(r.Context(), chi.URLParam(r, "orderID"))
+	orderID := chi.URLParam(r, "orderID")
+	if uuid.Validate(orderID) != nil {
+		writeError(w, 400, "invalid_request", "order id is invalid")
+		return
+	}
+	order, err := a.Orders.Get(r.Context(), orderID)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, 404, "not_found", "order was not found")
 		return
