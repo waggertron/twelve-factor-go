@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: local_only
+    ports:
+      - "${POSTGRES_PORT:-55433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "${REDIS_PORT:-56381}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  migrate:
+    build: .
+    command: ["admin", "migrate", "--target", "001"]
+    environment: &app-env
+      DATABASE_URL: postgresql://orders:local_only@postgres:5432/orders
+      REDIS_URL: redis://redis:6379
+      RELEASE_ID: local-1.0.1
+      TELEMETRY_MODE: console
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["admin"]
+  web:
+    build: .
+    command: ["web"]
+    environment:
+      <<: *app-env
+      PORT: 3103
+    ports:
+      - "${WEB_PORT:-3103}:3103"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  worker:
+    build: .
+    command: ["worker"]
+    environment:
+      <<: *app-env
+      WORKER_CONCURRENCY: 4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+volumes:
+  postgres-data:

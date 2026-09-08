@@ -1,0 +1,7 @@
+interface:
+  display_name: "Twelve-Factor App"
+  short_description: "Review Go services against Twelve-Factor boundaries"
+  default_prompt: "Use $twelve-factor-app to review this Go service change and verify the affected factors."
+
+policy:
+  allow_implicit_invocation: true
